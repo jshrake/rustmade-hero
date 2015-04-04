@@ -1,0 +1,19 @@
+[package]
+name = "handmade"
+version = "0.0.1"
+authors = ["jshrake <JustinShrake@gmail.com>"]
+
+[dependencies]
+libc = "*"
+
+[target.i686-pc-windows-gnu.dependencies]
+winapi = "*"
+gdi32-sys = "*"
+user32-sys = "*"
+kernel32-sys = "*"
+
+[target.x86_64-pc-windows-gnu.dependencies]
+winapi = "*"
+gdi32-sys = "*"
+user32-sys = "*"
+kernel32-sys = "*"
