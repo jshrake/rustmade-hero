@@ -5,6 +5,7 @@ authors = ["jshrake <JustinShrake@gmail.com>"]
 
 [dependencies]
 libc = "*"
+lazy_static = "0.1.*"
 
 [target.i686-pc-windows-gnu.dependencies]
 winapi = "*"
