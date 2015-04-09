@@ -12,9 +12,13 @@ winapi = "*"
 gdi32-sys = "*"
 user32-sys = "*"
 kernel32-sys = "*"
+xinput-sys = "*"
+xinput9_1_0-sys = "*"
 
 [target.x86_64-pc-windows-gnu.dependencies]
 winapi = "*"
 gdi32-sys = "*"
 user32-sys = "*"
 kernel32-sys = "*"
+xinput-sys = "*"
+xinput9_1_0-sys = "*"

@@ -6,6 +6,8 @@ extern crate kernel32;
 extern crate gdi32;
 #[cfg(target_os = "windows")]
 extern crate user32;
+#[cfg(target_os = "windows")]
+extern crate xinput9_1_0;
 
 macro_rules! utf16 {
   ($s:expr) => {
@@ -27,6 +29,7 @@ mod windows {
   use user32;
   use kernel32;
   use gdi32;
+  use xinput9_1_0;
   use std::default::Default;
 
   static DEFAULT_BITMAP_INFO: winapi::BITMAPINFOHEADER = winapi::BITMAPINFOHEADER {
@@ -121,18 +124,18 @@ mod windows {
                          0, 0, backbuffer.width, backbuffer.height,
                          backbuffer.memory,
                          &backbuffer.info,
-                         winapi::GIB_RGB_COLORS, winapi::SRCCOPY);
+                         winapi::DIB_RGB_COLORS, winapi::SRCCOPY);
     }
   }
 
-  fn render_weird_gradient(buffer: &mut OffscreenBuffer, x_offset: u32, y_offset: u32) {
+  fn render_weird_gradient(buffer: &mut OffscreenBuffer, x_offset: i32, y_offset: i32) {
     unsafe {
       let mut row = buffer.memory as *mut u8;
       for y in 0..buffer.height {
         let mut pixel = row as *mut u32;
         for x in 0..buffer.width {
-          let blue = x as u32 + x_offset;
-          let green = y as u32 + y_offset;
+          let blue = ((x + x_offset) as u8) as u32;
+          let green = ((y + y_offset) as u8) as u32;
           *pixel = (green << 8) | blue;
           pixel = pixel.offset(1);
         }
@@ -162,20 +165,41 @@ mod windows {
       let mut y_offset = 0;
       let mut running = true;
       while running {
-        loop {
-          let mut msg = mem::zeroed();
-          if user32::PeekMessageW(&mut msg, ptr::null_mut(), 0, 0, winapi::PM_REMOVE) <= 0 {
-            break;
-          }
+        let mut msg = mem::zeroed();
+        while user32::PeekMessageW(&mut msg, ptr::null_mut(), 0, 0, winapi::PM_REMOVE) > 0 {
           if msg.message == winapi::WM_QUIT {
             running = false;
           }
           user32::TranslateMessage(&msg);
           user32::DispatchMessageW(&msg);
         }
+        //todo(jshrake): Should we poll this more frequently
+        for controller_index in 0..winapi::XUSER_MAX_COUNT {
+          let mut controller_state = mem::zeroed();
+          if xinput9_1_0::XInputGetState(controller_index, &mut controller_state) == winapi::ERROR_SUCCESS {
+            //note(jshrake): Controller is plugged in
+            let pad = &controller_state.Gamepad;
+            let up = pad.wButtons & winapi::XINPUT_GAMEPAD_DPAD_UP;
+            let down = pad.wButtons & winapi::XINPUT_GAMEPAD_DPAD_DOWN;
+            let left = pad.wButtons & winapi::XINPUT_GAMEPAD_DPAD_LEFT;
+            let right = pad.wButtons & winapi::XINPUT_GAMEPAD_DPAD_RIGHT;
+            let start = pad.wButtons & winapi::XINPUT_GAMEPAD_START;
+            let back = pad.wButtons & winapi::XINPUT_GAMEPAD_BACK;
+            let left_shoulder = pad.wButtons & winapi::XINPUT_GAMEPAD_LEFT_SHOULDER;
+            let right_shoulder = pad.wButtons & winapi::XINPUT_GAMEPAD_RIGHT_SHOULDER;
+            let a_button = pad.wButtons & winapi::XINPUT_GAMEPAD_A;
+            let b_button = pad.wButtons & winapi::XINPUT_GAMEPAD_B;
+            let x_button = pad.wButtons & winapi::XINPUT_GAMEPAD_X;
+            let y_button = pad.wButtons & winapi::XINPUT_GAMEPAD_Y;
+            let stick_x = pad.sThumbLX as i32;
+            let stick_y = pad.sThumbLY as i32;
+            x_offset += stick_x >> 12;
+            y_offset += stick_y >> 12;
+          } else {
+            //note(jshrake): Controller is not plugged in
+          }
+        }
         render_weird_gradient(backbuffer, x_offset, y_offset);
-        x_offset += 1;
-        y_offset += 2;
         let mut client_rect = mem::zeroed();
         user32::GetClientRect(window, &mut client_rect);
         let client_width = client_rect.right - client_rect.left;
@@ -215,6 +239,6 @@ pub unsafe extern "system" fn callback(window: winapi::HWND,
 
 fn main() {
   let name = windows::register_window("WinClass", Some(callback));
-  let mut backbuffer = windows::OffscreenBuffer::new(1440, 900);
+  let mut backbuffer = windows::OffscreenBuffer::new(1920, 1080);
   windows::create_window(&name, &mut backbuffer);
 }
