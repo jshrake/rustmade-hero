@@ -6,8 +6,6 @@ extern crate kernel32;
 extern crate gdi32;
 #[cfg(target_os = "windows")]
 extern crate user32;
-#[cfg(target_os = "windows")]
-extern crate xinput9_1_0;
 
 macro_rules! utf16 {
   ($s:expr) => {
@@ -29,9 +27,29 @@ mod windows {
   use user32;
   use kernel32;
   use gdi32;
-  use xinput9_1_0;
   use std::default::Default;
 
+  fn XInputGetStateStub(dwUserIndex: winapi::DWORD , pState: *mut winapi::XINPUT_STATE) -> winapi::DWORD {
+    0
+  }
+  static mut XInputGetState: fn(winapi::DWORD, *mut winapi::XINPUT_STATE) -> winapi::DWORD = XInputGetStateStub;
+  fn XInputSetStateStub(dwUserIndex: winapi::DWORD , pVibration: *mut winapi::XINPUT_VIBRATION) -> winapi::DWORD {
+    0
+  }
+  static mut XInputSetState: fn(winapi::DWORD, *mut winapi::XINPUT_VIBRATION) -> winapi::DWORD = XInputSetStateStub;
+
+  pub fn load_xinput_lib() {
+    unsafe {
+      let lib_name = utf16!("xinput1_3.dll");
+      let xinput_lib = kernel32::LoadLibraryW(lib_name.as_ptr());
+      if xinput_lib != ptr::null_mut() {
+        let xinput_get_state_addr =  kernel32::GetProcAddress(xinput_lib, "XInputGetState".as_ptr() as *const i8);
+        XInputGetState =  mem::transmute(xinput_get_state_addr);
+        let xinput_set_state_addr =  kernel32::GetProcAddress(xinput_lib, "XInputSetState".as_ptr() as *const i8);
+        XInputSetState =  mem::transmute(xinput_get_state_addr);
+      }
+    }
+  }
   static DEFAULT_BITMAP_INFO: winapi::BITMAPINFOHEADER = winapi::BITMAPINFOHEADER {
         biSize: 0,
         biWidth: 0,
@@ -176,7 +194,7 @@ mod windows {
         //todo(jshrake): Should we poll this more frequently
         for controller_index in 0..winapi::XUSER_MAX_COUNT {
           let mut controller_state = mem::zeroed();
-          if xinput9_1_0::XInputGetState(controller_index, &mut controller_state) == winapi::ERROR_SUCCESS {
+          if XInputGetState(controller_index, &mut controller_state) == winapi::ERROR_SUCCESS {
             //note(jshrake): Controller is plugged in
             let pad = &controller_state.Gamepad;
             let up = pad.wButtons & winapi::XINPUT_GAMEPAD_DPAD_UP;
@@ -238,6 +256,7 @@ pub unsafe extern "system" fn callback(window: winapi::HWND,
 }
 
 fn main() {
+  windows::load_xinput_lib();
   let name = windows::register_window("WinClass", Some(callback));
   let mut backbuffer = windows::OffscreenBuffer::new(1920, 1080);
   windows::create_window(&name, &mut backbuffer);
