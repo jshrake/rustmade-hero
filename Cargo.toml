@@ -6,14 +6,34 @@ authors = ["jshrake <JustinShrake@gmail.com>"]
 [dependencies]
 libc = "*"
 
-[target.i686-pc-windows-gnu.dependencies]
-winapi = "*"
-gdi32-sys = "*"
-user32-sys = "*"
-kernel32-sys = "*"
+[target.i686-pc-windows-gnu.dependencies.winapi]
+git = "https://github.com/jshrake/winapi-rs"
+branch = "handmade-hero"
 
-[target.x86_64-pc-windows-gnu.dependencies]
-winapi = "*"
-gdi32-sys = "*"
-user32-sys = "*"
-kernel32-sys = "*"
+[target.i686-pc-windows-gnu.dependencies.gdi32-sys]
+git = "https://github.com/jshrake/winapi-rs"
+branch = "handmade-hero"
+
+[target.i686-pc-windows-gnu.dependencies.user32-sys]
+git = "https://github.com/jshrake/winapi-rs"
+branch = "handmade-hero"
+
+[target.i686-pc-windows-gnu.dependencies.kernel32-sys]
+git = "https://github.com/jshrake/winapi-rs"
+branch = "handmade-hero"
+
+[target.x86_64-pc-windows-gnu.dependencies.winapi]
+git = "https://github.com/jshrake/winapi-rs"
+branch = "handmade-hero"
+
+[target.x86_64-pc-windows-gnu.dependencies.gdi32-sys]
+git = "https://github.com/jshrake/winapi-rs"
+branch = "handmade-hero"
+
+[target.x86_64-pc-windows-gnu.dependencies.user32-sys]
+git = "https://github.com/jshrake/winapi-rs"
+branch = "handmade-hero"
+
+[target.x86_64-pc-windows-gnu.dependencies.kernel32-sys]
+git = "https://github.com/jshrake/winapi-rs"
+branch = "handmade-hero"
