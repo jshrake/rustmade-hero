@@ -1,3 +1,4 @@
+#![feature(asm)]
 #[cfg(target_os = "windows")]
 extern crate winapi;
 #[cfg(target_os = "windows")]
@@ -24,32 +25,47 @@ mod windows {
   use std::ptr;
   use std::mem;
   use winapi;
+  use winapi::*;
   use user32;
   use kernel32;
   use gdi32;
   use std::default::Default;
 
   fn XInputGetStateStub(dwUserIndex: winapi::DWORD , pState: *mut winapi::XINPUT_STATE) -> winapi::DWORD {
-    0
+    winapi::ERROR_DEVICE_NOT_CONNECTED
   }
   static mut XInputGetState: fn(winapi::DWORD, *mut winapi::XINPUT_STATE) -> winapi::DWORD = XInputGetStateStub;
   fn XInputSetStateStub(dwUserIndex: winapi::DWORD , pVibration: *mut winapi::XINPUT_VIBRATION) -> winapi::DWORD {
-    0
+    winapi::ERROR_DEVICE_NOT_CONNECTED
   }
   static mut XInputSetState: fn(winapi::DWORD, *mut winapi::XINPUT_VIBRATION) -> winapi::DWORD = XInputSetStateStub;
 
   pub fn load_xinput_lib() {
     unsafe {
-      let lib_name = utf16!("xinput1_3.dll");
-      let xinput_lib = kernel32::LoadLibraryW(lib_name.as_ptr());
+      let name_1_4 = utf16!("xinput1_4.dll");
+      let mut xinput_lib = kernel32::LoadLibraryW(name_1_4.as_ptr());
+      if xinput_lib == ptr::null_mut() {
+        let name_1_3 = utf16!("xinput1_3.dll");
+        xinput_lib = kernel32::LoadLibraryW(name_1_3.as_ptr());
+        println!("Found xinput1_3");
+      } else {
+        println!("Found xinput1_4");
+      }
+
       if xinput_lib != ptr::null_mut() {
+        // in release builds, the optimizer is stomping on xinput_[g, s]et_state_addr. assert to the rescue
         let xinput_get_state_addr =  kernel32::GetProcAddress(xinput_lib, "XInputGetState".as_ptr() as *const i8);
-        XInputGetState =  mem::transmute(xinput_get_state_addr);
+        assert!(xinput_get_state_addr != ptr::null_mut(), "Couldn't find XInputGetState");
+        XInputGetState = mem::transmute(xinput_get_state_addr);
         let xinput_set_state_addr =  kernel32::GetProcAddress(xinput_lib, "XInputSetState".as_ptr() as *const i8);
-        XInputSetState =  mem::transmute(xinput_get_state_addr);
+        assert!(xinput_set_state_addr != ptr::null_mut(), "Couldn't find XInputSetState");
+        XInputSetState = mem::transmute(xinput_set_state_addr);
+      } else {
+        println!("xinput not found!");
       }
     }
   }
+
   static DEFAULT_BITMAP_INFO: winapi::BITMAPINFOHEADER = winapi::BITMAPINFOHEADER {
         biSize: 0,
         biWidth: 0,
@@ -181,6 +197,11 @@ mod windows {
       let device_context = user32::GetDC(window);
       let mut x_offset = 0;
       let mut y_offset = 0;
+
+      let mut last_counter = mem::zeroed();
+      kernel32::QueryPerformanceCounter(&mut last_counter);
+      let mut perf_count_frequency = mem::zeroed();
+      kernel32::QueryPerformanceFrequency(&mut perf_count_frequency);
       let mut running = true;
       while running {
         let mut msg = mem::zeroed();
@@ -213,6 +234,11 @@ mod windows {
             let stick_y = pad.sThumbLY as i32;
             x_offset += stick_x >> 12;
             y_offset += stick_y >> 12;
+            let mut vibration = winapi::XINPUT_VIBRATION {
+              wLeftMotorSpeed: 60000,
+              wRightMotorSpeed: 60000
+            };
+            XInputSetState(controller_index, &mut vibration);
           } else {
             //note(jshrake): Controller is not plugged in
           }
@@ -223,6 +249,14 @@ mod windows {
         let client_width = client_rect.right - client_rect.left;
         let client_height = client_rect.bottom - client_rect.top;
         display_buffer_in_window(device_context, client_width, client_height, backbuffer);
+
+        let mut end_counter = mem::zeroed();
+        kernel32::QueryPerformanceCounter(&mut end_counter);
+        let counter_elapsed = (end_counter - last_counter) as f32;
+        let ms_per_frame = (1000.0 * counter_elapsed) / perf_count_frequency as f32;
+        println!("{}ms/f, {}f/s", ms_per_frame, 1000.0 / ms_per_frame);
+
+        last_counter = end_counter;
       };
       window
     }
@@ -248,9 +282,63 @@ pub unsafe extern "system" fn callback(window: winapi::HWND,
       user32::PostQuitMessage(0);
       0
     },
+    winapi::WM_SYSKEYDOWN | winapi::WM_SYSKEYUP | winapi::WM_KEYDOWN | winapi::WM_KEYUP => {
+      let vkcode = wparam as u8 as char;
+      // 30th bit in lparam determines if the key was up or down
+      let was_down = (lparam & (1 << 30)) != 0;
+      // 31st bit in lparam determines if the key is up or down
+      let is_down = (lparam & (1 << 31)) == 0;
+      if was_down != is_down {
+        match vkcode {
+          'W' => {
+            println!("W");
+          },
+          'A' => {
+            println!("A");
+          },
+          'S' => {
+            println!("S");
+          },
+          'D' => {
+            println!("D");
+          },
+          'Q' => {
+            println!("Q");
+          },
+          'E' => {
+            println!("E");
+          },
+          _ => {}
+        }
+        match wparam {
+          winapi::VK_UP => {
+            println!("UP");
+          },
+          winapi::VK_LEFT => {
+            println!("LEFT");
+          },
+          winapi::VK_DOWN => {
+            println!("DOWN");
+          },
+          winapi::VK_RIGHT => {
+            println!("RIGHT");
+          },
+          winapi::VK_ESCAPE => {
+            println!("ESCAPE");
+            user32::PostQuitMessage(0);
+          },
+          winapi::VK_SPACE => {
+            println!("SPACE");
+          },
+          _ => {}
+        }
+      }
+      0
+    },
     winapi::WM_SIZE => {
       0
     },
+
     _ => user32::DefWindowProcW(window, msg, wparam, lparam)
   }
 }
@@ -258,6 +346,6 @@ pub unsafe extern "system" fn callback(window: winapi::HWND,
 fn main() {
   windows::load_xinput_lib();
   let name = windows::register_window("WinClass", Some(callback));
-  let mut backbuffer = windows::OffscreenBuffer::new(1920, 1080);
+  let mut backbuffer = windows::OffscreenBuffer::new(1280, 720);
   windows::create_window(&name, &mut backbuffer);
 }
