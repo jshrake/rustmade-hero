@@ -17,6 +17,6 @@ fn render_weird_gradient(buffer: &mut gfx::PixelBuffer, x_offset: i32, y_offset:
   }
 }
 
-pub fn update_and_render(buffer: &mut gfx::PixelBuffer) {
-  render_weird_gradient(buffer, 0, 0);
+pub fn update_and_render(buffer: &mut gfx::PixelBuffer, x_offset: i32, y_offset: i32) {
+  render_weird_gradient(buffer, x_offset, y_offset);
 }

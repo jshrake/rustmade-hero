@@ -145,7 +145,7 @@ fn display_buffer_in_window(device_context :HDC,
   }
 }
 
-fn create_window(win_class_name :&Vec<u16>, game_update_and_render: fn(&mut gfx::PixelBuffer)) -> HWND {
+fn create_window(win_class_name :&Vec<u16>, game_update_and_render: fn(&mut gfx::PixelBuffer, i32, i32)) -> HWND {
   let mut backbuffer = OffscreenBuffer::new(1280, 720);
   unsafe {
     let window = user32::CreateWindowExW(
@@ -211,7 +211,7 @@ fn create_window(win_class_name :&Vec<u16>, game_update_and_render: fn(&mut gfx:
           //note(jshrake): Controller is not plugged in
         }
       }
-      game_update_and_render(&mut backbuffer.buffer);
+      game_update_and_render(&mut backbuffer.buffer, x_offset, y_offset);
       let mut client_rect = mem::zeroed();
       user32::GetClientRect(window, &mut client_rect);
       let client_width = client_rect.right - client_rect.left;
@@ -310,7 +310,7 @@ match msg {
 }
 
 
-pub fn main(game_update_and_render: fn(&mut gfx::PixelBuffer)) {
+pub fn main(game_update_and_render: fn(&mut gfx::PixelBuffer, i32, i32)) {
   load_xinput_lib();
   let name = register_window("WinClass", Some(callback));
   create_window(&name, game_update_and_render);
