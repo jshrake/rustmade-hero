@@ -6,6 +6,9 @@ use kernel32;
 use gdi32;
 use std::default::Default;
 use gfx;
+use input;
+use types;
+use std::num::{Float};
 
 macro_rules! utf16 {
 ($s:expr) => {
@@ -145,7 +148,16 @@ fn display_buffer_in_window(device_context :HDC,
   }
 }
 
-fn create_window(win_class_name :&Vec<u16>, game_update_and_render: fn(&mut gfx::PixelBuffer, i32, i32)) -> HWND {
+
+fn process_xinput_button(button_state: WORD, button_bit: WORD, previous_state: input::ButtonState) -> input::ButtonState {
+  let is_down = (button_state & button_bit) == button_bit;
+  input::ButtonState {
+    is_down: is_down,
+    half_transition_count: if is_down != previous_state.is_down { 1 } else { 0 }
+  }
+}
+
+fn create_window(win_class_name :&Vec<u16>, game_update_and_render: types::game_update_and_render) -> HWND {
   let mut backbuffer = OffscreenBuffer::new(1280, 720);
   unsafe {
     let window = user32::CreateWindowExW(
@@ -170,6 +182,8 @@ fn create_window(win_class_name :&Vec<u16>, game_update_and_render: fn(&mut gfx:
     kernel32::QueryPerformanceCounter(&mut last_counter);
     let mut perf_count_frequency = mem::zeroed();
     kernel32::QueryPerformanceFrequency(&mut perf_count_frequency);
+
+    let mut previous_game_input = input::GameInput::default();
     let mut running = true;
     while running {
       let mut msg = mem::zeroed();
@@ -181,37 +195,60 @@ fn create_window(win_class_name :&Vec<u16>, game_update_and_render: fn(&mut gfx:
         user32::DispatchMessageW(&msg);
       }
       //todo(jshrake): Should we poll this more frequently
-      for controller_index in 0..XUSER_MAX_COUNT {
+      let mut game_input = input::GameInput::default();
+
+      let max_controller_count = game_input.controllers.len();
+      for controller_index in 0..max_controller_count {
+        let previous_controller = &previous_game_input.controllers[controller_index];
+        let mut current_controller = &mut game_input.controllers[controller_index];
+
         let mut controller_state = mem::zeroed();
-        if XInputGetState(controller_index, &mut controller_state) == ERROR_SUCCESS {
+        if XInputGetState(controller_index as DWORD, &mut controller_state) == ERROR_SUCCESS {
           //note(jshrake): Controller is plugged in
           let pad = &controller_state.Gamepad;
+          //todo(jshrake): do something with dpad and start/stop buttons
           let up = pad.wButtons & XINPUT_GAMEPAD_DPAD_UP;
           let down = pad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN;
           let left = pad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT;
           let right = pad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT;
           let start = pad.wButtons & XINPUT_GAMEPAD_START;
           let back = pad.wButtons & XINPUT_GAMEPAD_BACK;
-          let left_shoulder = pad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER;
-          let right_shoulder = pad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER;
-          let a_button = pad.wButtons & XINPUT_GAMEPAD_A;
-          let b_button = pad.wButtons & XINPUT_GAMEPAD_B;
-          let x_button = pad.wButtons & XINPUT_GAMEPAD_X;
-          let y_button = pad.wButtons & XINPUT_GAMEPAD_Y;
-          let stick_x = pad.sThumbLX as i32;
-          let stick_y = pad.sThumbLY as i32;
-          x_offset += stick_x >> 12;
-          y_offset += stick_y >> 12;
-          let mut vibration = XINPUT_VIBRATION {
-            wLeftMotorSpeed: 60000,
-            wRightMotorSpeed: 60000
-          };
-          XInputSetState(controller_index, &mut vibration);
+
+          let thumb_lx = pad.sThumbLX as f32;
+          let thumb_ly = pad.sThumbLY as f32;
+          let max_short = SHORT::max_value() as f32;
+          let min_short = -1.0 * SHORT::min_value() as f32;
+          
+          let stick_x = if pad.sThumbLX < 0 {thumb_lx  / min_short } else {thumb_lx / max_short};
+          current_controller.stick.x.start = previous_controller.stick.x.stop;
+          current_controller.stick.x.min = stick_x;
+          current_controller.stick.x.max = stick_x;
+          current_controller.stick.x.stop = stick_x;
+
+          let stick_y = if pad.sThumbLY < 0 {thumb_ly / min_short } else {thumb_ly / max_short};
+          current_controller.stick.y.start = previous_controller.stick.y.stop;
+          current_controller.stick.y.min = stick_y;
+          current_controller.stick.y.max = stick_y;
+          current_controller.stick.y.stop = stick_y;
+
+          current_controller.a_button = process_xinput_button(pad.wButtons, XINPUT_GAMEPAD_A, previous_controller.a_button);
+          current_controller.b_button = process_xinput_button(pad.wButtons, XINPUT_GAMEPAD_B, previous_controller.b_button);
+          current_controller.x_button = process_xinput_button(pad.wButtons, XINPUT_GAMEPAD_X, previous_controller.x_button);
+          current_controller.y_button = process_xinput_button(pad.wButtons, XINPUT_GAMEPAD_Y, previous_controller.y_button);
+          current_controller.left_shoulder = process_xinput_button(pad.wButtons, XINPUT_GAMEPAD_LEFT_SHOULDER, previous_controller.left_shoulder);
+          current_controller.right_shoulder = process_xinput_button(pad.wButtons, XINPUT_GAMEPAD_RIGHT_SHOULDER, previous_controller.right_shoulder);
+
+
+          // let mut vibration = XINPUT_VIBRATION {
+          //   wLeftMotorSpeed: 60000,
+          //   wRightMotorSpeed: 60000
+          // };
+          // XInputSetState(controller_index, &mut vibration);
         } else {
           //note(jshrake): Controller is not plugged in
         }
       }
-      game_update_and_render(&mut backbuffer.buffer, x_offset, y_offset);
+      game_update_and_render(&mut backbuffer.buffer, &game_input);
       let mut client_rect = mem::zeroed();
       user32::GetClientRect(window, &mut client_rect);
       let client_width = client_rect.right - client_rect.left;
@@ -225,6 +262,7 @@ fn create_window(win_class_name :&Vec<u16>, game_update_and_render: fn(&mut gfx:
       println!("{}ms/f, {}f/s", ms_per_frame, 1000.0 / ms_per_frame);
 
       last_counter = end_counter;
+      previous_game_input = game_input;
     };
     window
   }
@@ -310,7 +348,7 @@ match msg {
 }
 
 
-pub fn main(game_update_and_render: fn(&mut gfx::PixelBuffer, i32, i32)) {
+pub fn main(game_update_and_render: types::game_update_and_render) {
   load_xinput_lib();
   let name = register_window("WinClass", Some(callback));
   create_window(&name, game_update_and_render);

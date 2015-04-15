@@ -13,6 +13,8 @@ mod platform;
 
 mod game;
 mod gfx;
+mod input;
+mod types;
 
 fn main() {
   platform::main(game::update_and_render);

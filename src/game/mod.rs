@@ -1,5 +1,6 @@
 
 use gfx;
+use input;
 
 fn render_weird_gradient(buffer: &mut gfx::PixelBuffer, x_offset: i32, y_offset: i32) {
   unsafe {
@@ -17,6 +18,14 @@ fn render_weird_gradient(buffer: &mut gfx::PixelBuffer, x_offset: i32, y_offset:
   }
 }
 
-pub fn update_and_render(buffer: &mut gfx::PixelBuffer, x_offset: i32, y_offset: i32) {
-  render_weird_gradient(buffer, x_offset, y_offset);
+pub fn update_and_render(buffer: &mut gfx::PixelBuffer, input: &input::GameInput) {
+  static mut x_offset: i32 = 0;
+  static mut y_offset: i32 = 0;
+  let p1 = &input.controllers[0];
+  unsafe {
+    println!("{} {}", p1.stick.x.stop, p1.stick.y.stop);
+    x_offset += (10.0*p1.stick.x.stop) as i32;
+    y_offset += (10.0*p1.stick.y.stop) as i32;
+    render_weird_gradient(buffer, x_offset, y_offset);
+  }
 }
